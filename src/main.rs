@@ -11,6 +11,9 @@ fn main() {
     let all_studies = api_client.list_studies();
 
     for study in all_studies {
-        println!("{}\t{}", study.id, study.identifier)
+        println!(
+            "Study {{ id: {}, uuid: String::from(\"{}\"), identifier: String::from(\"{}\") }}",
+            study.id, study.uuid, study.identifier
+        )
     }
 }
