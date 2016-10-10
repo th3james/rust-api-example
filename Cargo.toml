@@ -5,3 +5,4 @@ authors = ["James Cox-Morton <th3james@fastmail.fm>"]
 
 [dependencies]
 hyper = { version = "0.9", default-features = false, features = ["security-framework"] }
+rustc-serialize = "*"
