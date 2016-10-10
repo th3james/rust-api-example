@@ -8,19 +8,9 @@ fn main() {
     };
 
     let api_client = api_client::ApiClient { api_user: &api_user };
-    let investigations = api_client.list_investigations();
+    let all_studies = api_client.list_studies();
 
-    /*
-    let all_studies = investigations.into_iter().flat_map(|investigation|
-        let studies = api_client.list_studies_for_investigation(&investigation);
-        studies
-    );
-    */
-    for investigation in investigations {
-        println!("{}", investigation.name);
-        let studies = api_client.list_studies_for_investigation(&investigation);
-        for study in studies {
-            println!("\t{}", study.identifier)
-        }
+    for study in all_studies {
+        println!("{}\t{}", study.id, study.identifier)
     }
 }

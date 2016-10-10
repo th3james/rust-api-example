@@ -17,7 +17,7 @@ pub struct ApiClient<'a> {
     pub api_user: &'a ApiUser
 }
 
-const INSTANCE_URL: &'static str = "http://staging.eagle-core.com";
+const INSTANCE_URL: &'static str = "https://staging.eagle-core.com";
 
 fn build_creds_params(api_user: &ApiUser) -> String {
     format!("client_id={}&client_key={}", api_user.id, api_user.key)
@@ -64,8 +64,7 @@ impl<'a> ApiClient<'a> {
         assert_eq!(res.status, hyper::Ok);
 
         let mut res_body = String::new();
-        res.read_to_string(&mut res_body);
-
+        let result = res.read_to_string(&mut res_body).unwrap();
         let res_json = Json::from_str(&res_body).unwrap();
 
         let study_objs = res_json.as_array().unwrap();
@@ -83,5 +82,17 @@ impl<'a> ApiClient<'a> {
                     )
                 }
             } ).collect()
+    }
+
+    pub fn list_studies(&self) -> Vec<Study> {
+        let investigations: Vec<Investigation> = self.list_investigations();
+
+        investigations.into_iter().flat_map(|investigation: Investigation| {
+            let studies = self.list_studies_for_investigation(
+                &investigation
+            );
+            println!("Fetching studies of investigation {}", investigation.id);
+            studies
+        } ).collect()
     }
 }
