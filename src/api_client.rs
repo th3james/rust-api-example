@@ -34,18 +34,18 @@ impl<'a> ApiClient<'a> {
         println!("{}",res_body);
 
         let res_json = Json::from_str(&res_body).unwrap();
-        let investigation_objs = res_json.as_array();
+        let investigation_objs = res_json.as_array().unwrap();
 
-        let results: Vec<Investigation> = investigation_objs.unwrap().into_iter()
-            .map( |obj|
+        investigation_objs.into_iter()
+            .map( |obj_opt| {
+                let obj = obj_opt.as_object().unwrap();
                 Investigation {
-                    id: 1,
+                    id: obj.get("id").unwrap().as_u64().unwrap(),
                     name: String::from(
-                        obj.as_object().unwrap().get("title").unwrap().as_string().unwrap()
+                        obj.get("title").unwrap().as_string().unwrap()
                     )
                 }
-            ).collect();
-       results 
+            } ).collect()
     }
 
     pub fn list_studies_for_investigation(&self, investigation: &Investigation) -> Vec<Study> {
