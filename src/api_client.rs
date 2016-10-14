@@ -32,7 +32,9 @@ impl<'a> ApiClient<'a> {
             "{}/api/v1/investigations?{}",
             INSTANCE_URL, build_creds_params(&self.api_user)
         );
-        let mut res = client.get(&request_url).send().unwrap();
+        let mut res = client.get(&request_url).send().expect(
+            "Failed to fetch Investigations"
+        );
         assert_eq!(res.status, hyper::Ok);
 
         let mut res_body = String::new();
@@ -93,9 +95,9 @@ impl<'a> ApiClient<'a> {
     }
 
     pub fn list_studies(&self) -> Vec<Study> {
+        /*
         let investigations: Vec<Investigation> = self.list_investigations();
 
-        /*
         investigations.into_iter().flat_map(|investigation: Investigation| {
             let studies = self.list_studies_for_investigation(
                 &investigation
