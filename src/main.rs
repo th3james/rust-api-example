@@ -11,7 +11,7 @@ fn main() {
     };
 
     let api_client = api_client::ApiClient { api_user: &api_user };
-    let all_studies = api_client.list_studies();
+    let all_studies = api_client.list_studies().expect("Couldn't load studies");
 
     let candidate_file_paths: Vec<PathBuf> = fs::read_dir(
         "files-to-upload"
@@ -36,9 +36,9 @@ fn main() {
                              ).expect("Couldn't unwrap filename");
             let id_prefix = file_name.split_whitespace().next()
                 .expect("Can't split whitespace");
-            let study = all_studies.iter().find( |study| {
+            let study = all_studies.iter().find( |study|
                 study.identifier == id_prefix
-            }).expect(
+            ).expect(
                 format!("Couldn't find a study for {}", id_prefix).as_str()
             );
             (study, path)

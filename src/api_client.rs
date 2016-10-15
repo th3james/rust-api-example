@@ -26,36 +26,42 @@ fn build_creds_params(api_user: &ApiUser) -> String {
 }
 
 impl<'a> ApiClient<'a> {
-    pub fn list_investigations(&self) -> Vec<Investigation> {
+    pub fn list_investigations(&self) -> Result<Vec<Investigation>, String> {
         let client = Client::new();
         let request_url: String = format!(
             "{}/api/v1/investigations?{}",
             INSTANCE_URL, build_creds_params(&self.api_user)
         );
-        let mut res = client.get(&request_url).send().expect(
-            "Failed to fetch Investigations"
-        );
-        assert_eq!(res.status, hyper::Ok);
+        let mut res = client.get(&request_url).send();
+        res.map_err(|err| err.to_string())
+        .and_then(|res| {
+            if res.status == hyper::Ok {
+                Ok(res)
+            } else {
+                Err(format!("Got status {}", res.status))
+            }
+        }).and_then(|mut res| {
+            let mut res_body = String::new();
+            res.read_to_string(&mut res_body);
 
-        let mut res_body = String::new();
-        res.read_to_string(&mut res_body);
-
-        let res_json = Json::from_str(&res_body).unwrap();
-        let investigation_objs = res_json.as_array().unwrap();
-
-        investigation_objs.into_iter()
-            .map( |obj_opt| {
-                let obj = obj_opt.as_object().unwrap();
-                Investigation {
-                    id: obj.get("id").unwrap().as_u64().unwrap(),
-                    uuid: String::from(
-                        obj.get("uuid").unwrap().as_string().unwrap()
-                    ),
-                    name: String::from(
-                        obj.get("title").unwrap().as_string().unwrap()
-                    )
-                }
-            } ).collect()
+            Json::from_str(&res_body).map_err(|err| err.to_string())
+        }).and_then(|res_json|
+            res_json.as_array().map(|investigation_objs| {
+                investigation_objs.into_iter()
+                    .map( |obj_opt| {
+                        let obj = obj_opt.as_object().unwrap();
+                        Investigation {
+                            id: obj.get("id").unwrap().as_u64().unwrap(),
+                            uuid: String::from(
+                                obj.get("uuid").unwrap().as_string().unwrap()
+                            ),
+                            name: String::from(
+                                obj.get("title").unwrap().as_string().unwrap()
+                            )
+                        }
+                    } ).collect()
+            }).ok_or("Response wasn't an array".to_string())
+        )
     }
 
     pub fn list_studies_for_investigation(&self, investigation: &Investigation) -> Vec<Study> {
@@ -94,10 +100,10 @@ impl<'a> ApiClient<'a> {
             } ).collect()
     }
 
-    pub fn list_studies(&self) -> Vec<Study> {
-        /*
-        let investigations: Vec<Investigation> = self.list_investigations();
+    pub fn list_studies(&self) -> Result<Vec<Study>, String> {
+        let investigations = self.list_investigations();
 
+        /*
         investigations.into_iter().flat_map(|investigation: Investigation| {
             let studies = self.list_studies_for_investigation(
                 &investigation
@@ -106,7 +112,7 @@ impl<'a> ApiClient<'a> {
             studies
         } ).collect()
         */
-        vec!(
+        Ok(vec!(
             Study { id: 1570, uuid: String::from("49c8da3d-5090-4d82-b6e6-01dfe6869ea3"), identifier: String::from("E-GEOD-30451") },
             Study { id: 1571, uuid: String::from("574ac05f-d808-43bc-8ef7-a69f76326ab0"), identifier: String::from("E-GEOD-28674") },
             Study { id: 1568, uuid: String::from("c16a9861-3d28-4ffc-bd52-7d8f05133012"), identifier: String::from("E-GEOD-30447") },
@@ -599,6 +605,6 @@ impl<'a> ApiClient<'a> {
             Study { id: 1509, uuid: String::from("dc6864ff-5901-4a4f-b649-d6260602187b"), identifier: String::from("S2") },
             Study { id: 1682, uuid: String::from("cebe7d89-83a0-4fa4-9e4f-a0426f83a671"), identifier: String::from("A1") },
             Study { id: 1683, uuid: String::from("cc72b8e9-9712-4dcc-9772-b6c840f3a77a"), identifier: String::from("STDY009") }
-        )
+        ))
     }
 }
