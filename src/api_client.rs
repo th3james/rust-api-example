@@ -19,6 +19,13 @@ pub struct ApiClient<'a> {
     pub api_user: &'a ApiUser
 }
 
+#[derive(Debug)]
+pub enum ApiError {
+    Hyper(hyper::Error),
+    String(String),
+    Json(rustc_serialize::json::ParserError),
+}
+
 const INSTANCE_URL: &'static str = "https://staging.eagle-core.com";
 
 fn build_creds_params(api_user: &ApiUser) -> String {
@@ -26,25 +33,25 @@ fn build_creds_params(api_user: &ApiUser) -> String {
 }
 
 impl<'a> ApiClient<'a> {
-    pub fn list_investigations(&self) -> Result<Vec<Investigation>, String> {
+    pub fn list_investigations(&self) -> Result<Vec<Investigation>, ApiError> {
         let client = Client::new();
         let request_url: String = format!(
             "{}/api/v1/investigations?{}",
             INSTANCE_URL, build_creds_params(&self.api_user)
         );
         let mut res = client.get(&request_url).send();
-        res.map_err(|err| err.to_string())
+        res.map_err(ApiError::Hyper)
         .and_then(|res| {
             if res.status == hyper::Ok {
                 Ok(res)
             } else {
-                Err(format!("Got status {}", res.status))
+                Err(ApiError::String(format!("Got status {}", res.status)))
             }
         }).and_then(|mut res| {
             let mut res_body = String::new();
             res.read_to_string(&mut res_body);
 
-            Json::from_str(&res_body).map_err(|err| err.to_string())
+            Json::from_str(&res_body).map_err(ApiError::Json)
         }).and_then(|res_json|
             res_json.as_array().map(|investigation_objs| {
                 investigation_objs.into_iter()
@@ -60,11 +67,11 @@ impl<'a> ApiClient<'a> {
                             )
                         }
                     } ).collect()
-            }).ok_or("Response wasn't an array".to_string())
+            }).ok_or(ApiError::String("Response wasn't an array".to_string()))
         )
     }
 
-    pub fn list_studies_for_investigation(&self, investigation: &Investigation) -> Vec<Study> {
+    pub fn list_studies_for_investigation(&self, investigation: &Investigation) -> Result<Vec<Study>, String> {
         let client = Client::new();
         let request_url: String = format!(
             "{}/api/v1/investigations/{}/studies?{}",
@@ -85,8 +92,8 @@ impl<'a> ApiClient<'a> {
 
         let study_objs = res_json.as_array().unwrap();
 
-        study_objs.into_iter()
-            .map( |obj_opt| {
+        Ok(
+            study_objs.into_iter().map(|obj_opt| {
                 let obj = obj_opt.as_object().unwrap();
                 Study {
                     id: obj.get("id").unwrap().as_u64().unwrap(),
@@ -98,18 +105,22 @@ impl<'a> ApiClient<'a> {
                     )
                 }
             } ).collect()
+        )
     }
 
-    pub fn list_studies(&self) -> Result<Vec<Study>, String> {
+    pub fn list_studies(&self) -> Result<Vec<Study>, ApiError> {
         let investigations = self.list_investigations();
 
         investigations.map(|i| {
             i.into_iter().filter(|investigation|
                 investigation.name == "Developer test investigation"
-            ).flat_map(|investigation: Investigation| {
+            ).flat_map(|investigation| {
                 self.list_studies_for_investigation(
                     &investigation
-                )
+                ).expect(format!(
+                    "Unable to fetch studies for investigation {}",
+                    investigation.id
+                ).as_str())
             } ).collect()
         })
         /*
