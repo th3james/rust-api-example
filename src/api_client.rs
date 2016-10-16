@@ -3,6 +3,7 @@ use eaglecore_models::Study;
 
 extern crate hyper;
 use self::hyper::client::Client;
+
 use std::io::Read;
 
 extern crate rustc_serialize;
@@ -22,14 +23,30 @@ pub struct ApiClient<'a> {
 #[derive(Debug)]
 pub enum ApiError {
     Hyper(hyper::Error),
+    UnexpectedStatus(String),
     String(String),
     Json(rustc_serialize::json::ParserError),
+}
+
+impl From<hyper::Error> for ApiError {
+    fn from(err: hyper::Error) -> ApiError {
+        ApiError::Hyper(err)
+    }
 }
 
 const INSTANCE_URL: &'static str = "https://staging.eagle-core.com";
 
 fn build_creds_params(api_user: &ApiUser) -> String {
     format!("client_id={}&client_key={}", api_user.id, api_user.key)
+}
+
+fn assert_status(res: &hyper::client::Response, expected_status: &hyper::status::StatusCode) -> Result<(), ApiError> {
+    match res.status {
+        status if status == *expected_status => Ok(()),
+        _ => Err(ApiError::UnexpectedStatus(format!(
+            "Got non-ok status: {}", res.status
+        )))
+    }
 }
 
 impl<'a> ApiClient<'a> {
@@ -39,46 +56,40 @@ impl<'a> ApiClient<'a> {
             "{}/api/v1/investigations?{}",
             INSTANCE_URL, build_creds_params(&self.api_user)
         );
-        let mut res = client.get(&request_url).send();
-        res.map_err(ApiError::Hyper)
-        .and_then(|res| {
-            if res.status == hyper::Ok {
-                Ok(res)
-            } else {
-                Err(ApiError::String(format!("Got status {}", res.status)))
-            }
-        }).and_then(|mut res| {
-            let mut res_body = String::new();
-            res.read_to_string(&mut res_body);
+        let mut res = try!(client.get(&request_url).send());
+        try!(assert_status(&res, &hyper::Ok));
+        let mut res_body = String::new();
+        res.read_to_string(&mut res_body);
 
-            Json::from_str(&res_body).map_err(ApiError::Json)
-        }).and_then(|res_json|
-            res_json.as_array().map(|investigation_objs| {
-                investigation_objs.into_iter()
-                    .map( |obj_opt| {
-                        let obj = obj_opt.as_object().unwrap();
-                        Investigation {
-                            id: obj.get("id").unwrap().as_u64().unwrap(),
-                            uuid: String::from(
-                                obj.get("uuid").unwrap().as_string().unwrap()
-                            ),
-                            name: String::from(
-                                obj.get("title").unwrap().as_string().unwrap()
-                            )
-                        }
-                    } ).collect()
-            }).ok_or(ApiError::String("Response wasn't an array".to_string()))
-        )
+        Json::from_str(&res_body)
+            .map_err(ApiError::Json)
+            .and_then(|res_json|
+                res_json.as_array().map(|investigation_objs| {
+                    investigation_objs.into_iter()
+                        .map( |obj_opt| {
+                            let obj = obj_opt.as_object().unwrap();
+                            Investigation {
+                                id: obj.get("id").unwrap().as_u64().unwrap(),
+                                uuid: String::from(
+                                    obj.get("uuid").unwrap().as_string().unwrap()
+                                ),
+                                name: String::from(
+                                    obj.get("title").unwrap().as_string().unwrap()
+                                )
+                            }
+                        } ).collect()
+                }).ok_or(ApiError::String("Response wasn't an array".to_string()))
+            )
     }
 
-    pub fn list_studies_for_investigation(&self, investigation: &Investigation) -> Result<Vec<Study>, String> {
+    pub fn list_studies_for_investigation(&self, investigation: &Investigation) -> Result<Vec<Study>, ApiError> {
         let client = Client::new();
         let request_url: String = format!(
             "{}/api/v1/investigations/{}/studies?{}",
             INSTANCE_URL, investigation.uuid, build_creds_params(&self.api_user)
         );
-        let mut res = client.get(&request_url).send().unwrap();
-        assert_eq!(res.status, hyper::Ok);
+        let mut res = try!(client.get(&request_url).send());
+        try!(assert_status(&res, &hyper::Ok));
 
         println!("Reading body for {}...", request_url);
         let start_time = SystemTime::now();
